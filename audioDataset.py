@@ -1,6 +1,6 @@
 import os
 import torch
-import torhcaudio
+import torchaudio
 
 
 class AudioDataset(torch.utils.data.Dataset):
@@ -15,7 +15,8 @@ class AudioDataset(torch.utils.data.Dataset):
         file_name = self.files[idx]
         file_path = os.path.join(self.root_dir, file_name)
         audio, sr = torchaudio.load(file_path)
-        return self.normalize_sr(audio, sr)
+        norm_audio = self.normalize_sr(audio, sr)
+        return norm_audio, torch.cat((norm_audio[:,1:],(torch.zeros(norm_audio.shape[0],1))),1)
         
     def normalize_sr(self, audio, sr):
         # Resample to 16kHz
