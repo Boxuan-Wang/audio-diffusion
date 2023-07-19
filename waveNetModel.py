@@ -6,8 +6,9 @@ import os
 import time
 
 class DilatedConv1d(nn.Module):
-    def __init__(self, stack_size, channel_num):
+    def __init__(self, stack_size, channel_num,use_gpu = False):
         super().__init__()
+        self.use_gpu = use_gpu
         self.dilate_list = nn.ModuleList()
         self.stack_size = stack_size
         for i in range(self.stack_size):
@@ -21,7 +22,10 @@ class DilatedConv1d(nn.Module):
         receptive_length = 1
         for i in range(self.stack_size):
             shape = x.shape
-            x = torch.concat((torch.zeros(shape[0],shape[1],receptive_length), x), -1)
+            pad = torch.zeros(shape[0],shape[1],receptive_length)
+            if self.use_gpu:
+                pad = pad.to('cuda')
+            x = torch.concat((pad, x), -1)
             x = self.dilate_list[i](x)
             receptive_length *= 2
         return x
@@ -31,9 +35,10 @@ class DilatedConv1d(nn.Module):
 class WavenetUnconditional(pl.LightningModule):
     def __init__(self,
                  num_layers=10,
-                 stack_size=5,
+                 stack_size=10,
                  sample_rate = 16000,
-                 channel_num = 1
+                 channel_num = 1,
+                 use_gpu = False
                  ):
         """Initialise an unconditional WaveNet model.
 
@@ -42,7 +47,8 @@ class WavenetUnconditional(pl.LightningModule):
             stack_size (int, optional): Number of stacks in dilated conv. Defaults to 5.
         """
         super().__init__()
-        self.channel_num = channel_num # todo: support multi-channel
+        self.use_gpu = use_gpu
+        self.channel_num = channel_num 
         self.sample_rate = sample_rate
         self.num_layers = num_layers
         self.stack_size = stack_size
@@ -56,7 +62,7 @@ class WavenetUnconditional(pl.LightningModule):
         self.relu2 = nn.ReLU()
         self.softmax = nn.Sigmoid()
         for i in range(num_layers):
-            self.dilated_convs.append(DilatedConv1d(stack_size, self.channel_num))
+            self.dilated_convs.append(DilatedConv1d(stack_size, self.channel_num,use_gpu = self.use_gpu))
             self.filter_convs.append(nn.Conv1d(in_channels=self.channel_num, 
                                                out_channels=self.channel_num, 
                                                kernel_size=2))
@@ -81,7 +87,10 @@ class WavenetUnconditional(pl.LightningModule):
         for i in range(self.num_layers):
             x = self.dilated_convs[i](x)
             shape = x.shape
-            x = torch.concat((torch.zeros(shape[0],shape[1],1), x), -1)
+            pad = torch.zeros(shape[0],shape[1],1)
+            if self.use_gpu:
+                pad = pad.to('cuda')
+            x = torch.concat((pad, x), -1)
             x = torch.tanh(self.filter_convs[i](x)) * torch.sigmoid(self.gate_convs[i](x))
             skip_connections.append(x)
         x = sum(skip_connections)
