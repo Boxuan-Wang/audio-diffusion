@@ -24,7 +24,10 @@ class DilatedConv1d(nn.Module):
             shape = x.shape
             pad = torch.zeros(shape[0],shape[1],receptive_length)
             if self.use_gpu:
-                pad = pad.to('cuda')
+                if pad.device != 'cuda':
+                    pad = pad.to('cuda')
+                if x.device != 'cuda':
+                    x = x.to('cuda')
             x = torch.concat((pad, x), -1)
             x = self.dilate_list[i](x)
             receptive_length *= 2
@@ -89,7 +92,10 @@ class WavenetUnconditional(pl.LightningModule):
             shape = x.shape
             pad = torch.zeros(shape[0],shape[1],1)
             if self.use_gpu:
-                pad = pad.to('cuda')
+                if pad.device != 'cuda':
+                    pad = pad.to('cuda')
+                if x.device != 'cuda':
+                    x= x.to('cuda')
             x = torch.concat((pad, x), -1)
             x = torch.tanh(self.filter_convs[i](x)) * torch.sigmoid(self.gate_convs[i](x))
             skip_connections.append(x)
