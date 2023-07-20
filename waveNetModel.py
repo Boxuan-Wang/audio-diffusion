@@ -23,13 +23,6 @@ class DilatedConv1d(nn.Module):
         receptive_length = 1
         for i in range(self.stack_size):
             shape = x.shape
-            # pad = torch.zeros(shape[0],shape[1],receptive_length)
-            # if self.use_gpu:
-            #     if pad.device != 'cuda':
-            #         pad = pad.to('cuda')
-            #     if x.device != 'cuda':
-            #         x = x.to('cuda')
-            # x = torch.concat((pad, x), -1)
             x = self.dilate_list[i](x)
             x = x[:shape[0],:shape[1],:shape[2]]
             receptive_length *= 2
