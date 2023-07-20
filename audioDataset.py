@@ -14,25 +14,24 @@ class AudioDataset(torch.utils.data.Dataset):
         _lengths = []
         for file in self.files:
             file_path = os.path.join(self.root_dir, file)
-            audio, sr = librosa.load(file_path)
-            num_chunk = librosa.getduration(y=audio, sr=sr) // self.chunk_size
+            num_chunk = librosa.get_duration(path=file_path) // self.chunk_size
             _lengths.append(num_chunk)
         self.lengths = np.array(_lengths)
         print("Total number of 10s chunks in dataset: ", np.sum(self.lengths))
         
     def __len__(self):
-        return np.sum(self.lengths)
+        return int(np.sum(self.lengths))
     
     def __getitem__(self, idx):
         # find the file name given chunk id
-        cum_length = np.cumsum()
+        cum_length = np.cumsum(self.lengths)
         file_id = np.searchsorted(cum_length,idx)
-        local_chunk_id = idx - cum_length[file_id]
+        local_chunk_id = int(idx - cum_length[file_id-1] if file_id >0 else 0)
         file_name = self.files[file_id]
         
         # load audio file
         file_path = os.path.join(self.root_dir, file_name)
-        sr_librosa = librosa.get_samplerate(file_path)
+        sr_librosa = int(librosa.get_samplerate(file_path))
         audio, sr = torchaudio.load(file_path, 
                                     frame_offset = local_chunk_id * self.chunk_size * sr_librosa, 
                                     num_frames = self.chunk_size * sr_librosa)
