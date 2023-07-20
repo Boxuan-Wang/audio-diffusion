@@ -15,6 +15,7 @@ class DilatedConv1d(nn.Module):
             single_dilate = nn.Conv1d(in_channels = channel_num, 
                                       out_channels = channel_num, 
                                       kernel_size = 2, 
+                                      padding= 2**i,
                                       dilation = 2**i)
             self.dilate_list.append(single_dilate)
             
@@ -22,14 +23,15 @@ class DilatedConv1d(nn.Module):
         receptive_length = 1
         for i in range(self.stack_size):
             shape = x.shape
-            pad = torch.zeros(shape[0],shape[1],receptive_length)
-            if self.use_gpu:
-                if pad.device != 'cuda':
-                    pad = pad.to('cuda')
-                if x.device != 'cuda':
-                    x = x.to('cuda')
-            x = torch.concat((pad, x), -1)
+            # pad = torch.zeros(shape[0],shape[1],receptive_length)
+            # if self.use_gpu:
+            #     if pad.device != 'cuda':
+            #         pad = pad.to('cuda')
+            #     if x.device != 'cuda':
+            #         x = x.to('cuda')
+            # x = torch.concat((pad, x), -1)
             x = self.dilate_list[i](x)
+            x = x[:shape[0],:shape[1],:shape[2]]
             receptive_length *= 2
         return x
         
@@ -68,10 +70,12 @@ class WavenetUnconditional(pl.LightningModule):
             self.dilated_convs.append(DilatedConv1d(stack_size, self.channel_num,use_gpu = self.use_gpu))
             self.filter_convs.append(nn.Conv1d(in_channels=self.channel_num, 
                                                out_channels=self.channel_num, 
-                                               kernel_size=2))
+                                               kernel_size=2,
+                                               padding=1))
             self.gate_convs.append(nn.Conv1d(in_channels=self.channel_num, 
                                              out_channels=self.channel_num, 
-                                             kernel_size=2))
+                                             kernel_size=2,
+                                             padding=1))
         
     # def construct_dilate_stack(self, stack_size):
     #     dilate_list = nn.ModuleList()
@@ -90,14 +94,8 @@ class WavenetUnconditional(pl.LightningModule):
         for i in range(self.num_layers):
             x = self.dilated_convs[i](x)
             shape = x.shape
-            pad = torch.zeros(shape[0],shape[1],1)
-            if self.use_gpu:
-                if pad.device != 'cuda':
-                    pad = pad.to('cuda')
-                if x.device != 'cuda':
-                    x= x.to('cuda')
-            x = torch.concat((pad, x), -1)
             x = torch.tanh(self.filter_convs[i](x)) * torch.sigmoid(self.gate_convs[i](x))
+            x = x[:shape[0],:shape[1],:shape[2]]
             skip_connections.append(x)
         x = sum(skip_connections)
         
@@ -122,7 +120,7 @@ class WavenetUnconditional(pl.LightningModule):
             
             if num_pad > 0:                
                 input = torch.concat((torch.zeros(1,channel_num,num_pad), generated), -1)
-                x = self.waveNet(input)      
+                x = self.waveNet(input)
             generated = torch.cat((generated, x), -1)
         return generated
     
