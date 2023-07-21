@@ -4,6 +4,7 @@ from torch import nn
 import torch.nn.functional as F
 import os
 import time
+import torchaudio
 
 class DilatedConv1d(nn.Module):
     def __init__(self, stack_size, channel_num,use_gpu = False):
@@ -103,18 +104,21 @@ class WavenetUnconditional(pl.LightningModule):
     def forward(self, x):
         return self.waveNet(x)
     
-    def generate(self, length, channel_num = 1, first_samples = None):
+    def generate(self, length, first_samples = None):
+        self.eval()
         if first_samples is None:
-            first_samples = torch.randn(1,channel_num,1)
-        assert first_samples.shape[1] == channel_num
+            first_samples = torch.randn((1,self.channel_num,1))
+        assert first_samples.shape[1] == self.channel_num
         generated = first_samples
         while generated.shape[-1] < length:
             num_pad = 2**self.stack_size - generated.shape[0]
             
             if num_pad > 0:                
-                input = torch.concat((torch.zeros(1,channel_num,num_pad), generated), -1)
+                # input = torch.concat((torch.zeros(1,channel_num,num_pad), generated), -1)
+                input = F.pad(generated, (num_pad,0))
                 x = self.waveNet(input)
             generated = torch.cat((generated, x), -1)
+        self.train()
         return generated
     
     def training_step(self, batch, batch_idx):
@@ -141,11 +145,14 @@ class WavenetUnconditional(pl.LightningModule):
             file_name = time.strftime("%Y%m%d%H%M%S") + ".wav"
         elif not "." in file_name:
             file_name = file_name + ".wav"
-        save_path = os.path.join("./out/unconWavenet", file_name)
+        folder_path = "./out/unconWavenet"
+        save_path = os.path.join(folder_path, file_name)
+        if not os.path.exists(folder_path):
+            # make dir
+            os.makedirs(folder_path)
+        generated = self.generate(int(duration * self.sample_rate), first_samples=first_samples)
+        # generated = generated.squeeze().detach().numpy()
         
-        generated = self.generate(int(duration * self.sample_rate), first_samples)
-        generated = generated.squeeze().detach().numpy()
-        
-        torch.save(save_path, generated[0], self.sample_rate, format="wav")
+        torchaudio.save(save_path, generated[0], self.sample_rate, format="wav")
         print("Generated audio: " , file_name)
         
