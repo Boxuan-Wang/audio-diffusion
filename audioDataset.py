@@ -28,7 +28,7 @@ class AudioDataset(torch.utils.data.Dataset):
     def __getitem__(self, idx):
         # find the file name given chunk id
         cum_length = np.cumsum(self.lengths)
-        file_id = np.searchsorted(cum_length,idx)
+        file_id = np.searchsorted(cum_length,idx, side = 'right')
         local_chunk_id = int(idx - (cum_length[file_id-1] if file_id >0 else 0))
         file_name = self.files[file_id]
         

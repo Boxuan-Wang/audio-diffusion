@@ -1,7 +1,7 @@
 import torch
 import pytorch_lightning as pl
 from torch import nn
-import torch.functional as F
+import torch.nn.functional as F
 import os
 import time
 
