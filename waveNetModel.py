@@ -148,3 +148,4 @@ class WavenetUnconditional(pl.LightningModule):
         
         torch.save(save_path, generated[0], self.sample_rate, format="wav")
         print("Generated audio: " , file_name)
+        
