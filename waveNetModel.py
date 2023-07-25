@@ -16,7 +16,6 @@ class DilatedConv1d(nn.Module):
             single_dilate = nn.Conv1d(in_channels = channel_num,
                                       out_channels = channel_num,
                                       kernel_size = 2,
-                                      padding= 2**i,
                                       dilation = 2**i)
             self.dilate_list.append(single_dilate)
 

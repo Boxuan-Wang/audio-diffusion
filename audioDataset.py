@@ -40,24 +40,24 @@ class AudioDataset(torch.utils.data.Dataset):
             wave, sr = torchaudio.load(file_path)
             norm_audio = self.normalize_sr(wave, sr)
             norm_audio = self.softmax(norm_audio)
-            norm_audio = self.resemble_to_bits(norm_audio, self.bits)
-            one_hot = self.one_hot_encoding(norm_audio)
-            self.tensors += one_hot
-            self.num_samples.append(one_hot.shape[1] - receptive_field - target_field + 1)
+            norm_audio = self.resemble_to_bits(norm_audio)
+            # one_hot = self.one_hot_encoding(norm_audio)
+            # self.tensors += one_hot
+            self.num_samples.append(norm_audio.shape[1] - receptive_field - target_field + 1)
             # duration = wave.shape[1] / sr
             # num_chunk = int(duration // self.chunk_size + (0 if duration%self.chunk_size==0 else 1))
             # self.tensors+=torch.chunk(norm_audio, num_chunk, dim = 1)
-        print('Number of chunks: ', self.num_samples)
+        print('Number of chunks: ', sum(self.num_samples))
 
     def __len__(self):
-        return self.num_samples 
+        return sum(self.num_samples)
 
     def __getitem__(self, idx):
         cum_lengs = np.cumsum(self.num_samples)
         file_id = np.searchsorted(cum_lengs, idx, side='right')
         local_id = idx - (cum_lengs[file_id-1] if file_id > 0 else idx)
         norm_audio = self.tensors[file_id][:,local_id:local_id+self.receptive_field+self.target_field]
-        return norm_audio[:,:-self.target_field], norm_audio[:,-self.target_field:]
+        return self.one_hot_encoding(norm_audio[:,:-self.target_field]), self.one_hot_encoding(norm_audio[:,-self.target_field:])
 
     def normalize_sr(self, audio, sr):
         # Resample to 16kHz
@@ -69,7 +69,7 @@ class AudioDataset(torch.utils.data.Dataset):
     def resemble_to_bits(self, wave):
         # quantize the wave to 8 bits
         scaled_wave = ((wave + 1.0) * (2**self.bits - 1) / 2)
-        scaled_wave = scaled_wave.to(torch.int16).clamp(0,255)
+        scaled_wave = scaled_wave.to(torch.int64).clamp(0,255)
         return scaled_wave
     
     def softmax(self, wave):
@@ -80,9 +80,9 @@ class AudioDataset(torch.utils.data.Dataset):
     
     def one_hot_encoding(self,wave):
         num_channel = (2**self.bits)*wave.shape[0]
-        target = torch.zeros(num_channel, wave.shape[1])
+        target = torch.zeros(num_channel, wave.shape[1],dtype=torch.float32)
         for i in range(wave.shape[0]):
             wave[i] = wave[i] + i*(2**self.bits)
-            target =  target.scatter_(0, wave[i], 1)
+        target =  target.scatter_(0, wave, 1)
         return target
     
