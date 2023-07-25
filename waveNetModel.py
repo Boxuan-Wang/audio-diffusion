@@ -13,13 +13,13 @@ class DilatedConv1d(nn.Module):
         self.dilate_list = nn.ModuleList()
         self.stack_size = stack_size
         for i in range(self.stack_size):
-            single_dilate = nn.Conv1d(in_channels = channel_num, 
-                                      out_channels = channel_num, 
-                                      kernel_size = 2, 
+            single_dilate = nn.Conv1d(in_channels = channel_num,
+                                      out_channels = channel_num,
+                                      kernel_size = 2,
                                       padding= 2**i,
                                       dilation = 2**i)
             self.dilate_list.append(single_dilate)
-            
+
     def forward(self, x):
         receptive_length = 1
         for i in range(self.stack_size):
@@ -28,8 +28,8 @@ class DilatedConv1d(nn.Module):
             x = x[:shape[0],:shape[1],:shape[2]]
             receptive_length *= 2
         return x
-        
-        
+
+
 
 class WavenetUnconditional(pl.LightningModule):
     def __init__(self,
@@ -47,7 +47,7 @@ class WavenetUnconditional(pl.LightningModule):
         """
         super().__init__()
         self.use_gpu = use_gpu
-        self.channel_num = channel_num 
+        self.channel_num = channel_num
         self.sample_rate = sample_rate
         self.num_layers = num_layers
         self.stack_size = stack_size
@@ -62,26 +62,26 @@ class WavenetUnconditional(pl.LightningModule):
         self.softmax = nn.Sigmoid()
         for i in range(num_layers):
             self.dilated_convs.append(DilatedConv1d(stack_size, self.channel_num,use_gpu = self.use_gpu))
-            self.filter_convs.append(nn.Conv1d(in_channels=self.channel_num, 
-                                               out_channels=self.channel_num, 
+            self.filter_convs.append(nn.Conv1d(in_channels=self.channel_num,
+                                               out_channels=self.channel_num,
                                                kernel_size=2,
                                                padding=1))
-            self.gate_convs.append(nn.Conv1d(in_channels=self.channel_num, 
-                                             out_channels=self.channel_num, 
+            self.gate_convs.append(nn.Conv1d(in_channels=self.channel_num,
+                                             out_channels=self.channel_num,
                                              kernel_size=2,
                                              padding=1))
-        
+
     # def construct_dilate_stack(self, stack_size):
     #     dilate_list = nn.ModuleList()
     #     for i in range(stack_size):
-    #         single_dilate = nn.Conv1d(in_channels=1, 
-    #                                   out_channels=1, 
-    #                                   kernel_size=2, 
+    #         single_dilate = nn.Conv1d(in_channels=1,
+    #                                   out_channels=1,
+    #                                   kernel_size=2,
     #                                   dilation=2**i)
     #         dilate_list.append(single_dilate)
     #     dilate_stack = nn.Sequential(*dilate_list)
     #     return dilate_stack
-    
+
     def waveNet(self, x):
         x = self.start_conv(x)
         skip_connections = []
@@ -92,7 +92,7 @@ class WavenetUnconditional(pl.LightningModule):
             x = x[:shape[0],:shape[1],:shape[2]]
             skip_connections.append(x)
         x = sum(skip_connections)
-        
+
         x = self.relu1(x)
         x = self.end_conv_1(x)
         x = self.relu2(x)
@@ -100,27 +100,29 @@ class WavenetUnconditional(pl.LightningModule):
         # TODO: softmax function questionable
         x = self.softmax(x)
         return x
-    
+
     def forward(self, x):
         return self.waveNet(x)
-    
+
     def generate(self, length, first_samples = None):
         self.eval()
         if first_samples is None:
             first_samples = torch.randn((1,self.channel_num,1))
         assert first_samples.shape[1] == self.channel_num
         generated = first_samples
+        if self.use_gpu:
+          generated = generated.to('cuda')
         while generated.shape[-1] < length:
-            num_pad = 2**self.stack_size - generated.shape[0]
-            
-            if num_pad > 0:                
+            num_pad = 2**(self.stack_size-1) - generated.shape[-1]
+
+            if num_pad > 0:
                 # input = torch.concat((torch.zeros(1,channel_num,num_pad), generated), -1)
                 input = F.pad(generated, (num_pad,0))
-                x = self.waveNet(input)
-            generated = torch.cat((generated, x), -1)
+            x = self.waveNet(input[:,:,-1*2**(self.stack_size-1):])
+            generated = torch.cat((generated, x[:,:,-1:]), -1)
         self.train()
         return generated
-    
+
     def training_step(self, batch, batch_idx):
         x, y = batch
         y_hat = self(x)
@@ -128,7 +130,7 @@ class WavenetUnconditional(pl.LightningModule):
         loss = loss(y_hat, y)
         self.log('train_loss', loss)
         return loss
-    
+
     def validation_step(self, batch, batch_idx):
         x, y = batch
         y_hat = self(x)
@@ -136,10 +138,10 @@ class WavenetUnconditional(pl.LightningModule):
         loss = loss(y_hat, y)
         self.log('val_loss', loss)
         return loss
-    
+
     def configure_optimizers(self):
         return torch.optim.Adam(self.parameters(), lr=1e-3)
-    
+
     def generate_audio(self, duration = 1.0, first_samples = None, file_name = None):
         if file_name is None:
             file_name = time.strftime("%Y%m%d%H%M%S") + ".wav"
@@ -151,8 +153,8 @@ class WavenetUnconditional(pl.LightningModule):
             # make dir
             os.makedirs(folder_path)
         generated = self.generate(int(duration * self.sample_rate), first_samples=first_samples)
-        # generated = generated.squeeze().detach().numpy()
-        
+        if self.use_gpu:
+          generated = generated.detach().cpu()
+
         torchaudio.save(save_path, generated[0], self.sample_rate, format="wav")
         print("Generated audio: " , file_name)
-        
