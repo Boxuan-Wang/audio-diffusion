@@ -20,12 +20,8 @@ class DilatedConv1d(nn.Module):
             self.dilate_list.append(single_dilate)
 
     def forward(self, x):
-        receptive_length = 1
         for i in range(self.stack_size):
-            shape = x.shape
             x = self.dilate_list[i](x)
-            x = x[:shape[0],:shape[1],:shape[2]]
-            receptive_length *= 2
         return x
 
 
@@ -35,51 +31,44 @@ class WavenetUnconditional(pl.LightningModule):
                  num_layers=10,
                  stack_size=10,
                  sample_rate = 16000,
-                 channel_num = 1,
-                 use_gpu = False
+                 audio_channel_num = 1,
+                 use_gpu = False,
+                 bits = 8
                  ):
         """Initialise an unconditional WaveNet model.
 
         Args:
             num_layers (int, optional): Number of residual blocks. Defaults to 10.
             stack_size (int, optional): Number of stacks in dilated conv. Defaults to 5.
+            
         """
         super().__init__()
         self.use_gpu = use_gpu
-        self.channel_num = channel_num
+        self.audio_channel_num = audio_channel_num
+        self.bits = bits
+        self.nn_channel_num = self.audio_channel_num * (2**self.bits)
         self.sample_rate = sample_rate
         self.num_layers = num_layers
         self.stack_size = stack_size
-        self.start_conv = nn.Conv1d(self.channel_num,self.channel_num,1)
+        self.start_conv = nn.Conv1d(self.nn_channel_num,self.nn_channel_num,1)
         self.dilated_convs = nn.ModuleList()
         self.filter_convs = nn.ModuleList()
         self.gate_convs = nn.ModuleList()
-        self.end_conv_1 = nn.Conv1d(self.channel_num,self.channel_num,1)
-        self.end_conv_2 = nn.Conv1d(self.channel_num,self.channel_num,1)
+        self.end_conv_1 = nn.Conv1d(self.nn_channel_num,self.nn_channel_num,1)
+        self.end_conv_2 = nn.Conv1d(self.nn_channel_num,self.nn_channel_num,1)
         self.relu1 = nn.ReLU()
         self.relu2 = nn.ReLU()
-        self.softmax = nn.Sigmoid()
+        self.softmax = nn.Softmax(dim = 0)
         for i in range(num_layers):
-            self.dilated_convs.append(DilatedConv1d(stack_size, self.channel_num,use_gpu = self.use_gpu))
-            self.filter_convs.append(nn.Conv1d(in_channels=self.channel_num,
-                                               out_channels=self.channel_num,
+            self.dilated_convs.append(DilatedConv1d(stack_size, self.nn_channel_num,use_gpu = self.use_gpu))
+            self.filter_convs.append(nn.Conv1d(in_channels=self.nn_channel_num,
+                                               out_channels=self.nn_channel_num,
                                                kernel_size=2,
                                                padding=1))
-            self.gate_convs.append(nn.Conv1d(in_channels=self.channel_num,
-                                             out_channels=self.channel_num,
+            self.gate_convs.append(nn.Conv1d(in_channels=self.nn_channel_num,
+                                             out_channels=self.nn_channel_num,
                                              kernel_size=2,
                                              padding=1))
-
-    # def construct_dilate_stack(self, stack_size):
-    #     dilate_list = nn.ModuleList()
-    #     for i in range(stack_size):
-    #         single_dilate = nn.Conv1d(in_channels=1,
-    #                                   out_channels=1,
-    #                                   kernel_size=2,
-    #                                   dilation=2**i)
-    #         dilate_list.append(single_dilate)
-    #     dilate_stack = nn.Sequential(*dilate_list)
-    #     return dilate_stack
 
     def waveNet(self, x):
         x = self.start_conv(x)
@@ -106,8 +95,8 @@ class WavenetUnconditional(pl.LightningModule):
     def generate(self, length, first_samples = None):
         self.eval()
         if first_samples is None:
-            first_samples = torch.randn((1,self.channel_num,1))
-        assert first_samples.shape[1] == self.channel_num
+            first_samples = torch.randn((1,self.audio_channel_num,1))
+        assert first_samples.shape[1] == self.audio_channel_num
         generated = first_samples
         if self.use_gpu:
           generated = generated.to('cuda')
@@ -125,7 +114,7 @@ class WavenetUnconditional(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         x, y = batch
         y_hat = self(x)
-        loss = nn.MSELoss()
+        loss = nn.CrossEntropyLoss()
         loss = loss(y_hat, y)
         self.log('train_loss', loss)
         return loss
@@ -133,7 +122,7 @@ class WavenetUnconditional(pl.LightningModule):
     def validation_step(self, batch, batch_idx):
         x, y = batch
         y_hat = self(x)
-        loss = nn.MSELoss()
+        loss = nn.CrossEntropyLoss()
         loss = loss(y_hat, y)
         self.log('val_loss', loss)
         return loss

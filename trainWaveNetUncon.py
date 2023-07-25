@@ -1,5 +1,5 @@
-from waveNetModel import *
-from audioDataset import *
+from waveNetModel import WavenetUnconditional
+from audioDataset import AudioDataset
 import torch
 import pytorch_lightning as pl
 from torch.utils.data import DataLoader, random_split
@@ -13,7 +13,7 @@ if __name__ == "__main__":
     train_dataLoader = DataLoader(train_dataset, batch_size=1, shuffle=True, num_workers=4)
     val_dataloader = DataLoader(val_dataset, batch_size=1, shuffle=False, num_workers=4)
 
-    model = WavenetUnconditional(channel_num=2)
+    model = WavenetUnconditional(audio_channel_num=2)
 
     trainer = pl.Trainer(max_epochs=2)
     trainer.fit(model, 
