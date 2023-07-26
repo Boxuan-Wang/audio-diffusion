@@ -36,7 +36,6 @@ class AudioDataset(torch.utils.data.Dataset):
         self.files = os.listdir(root_dir)
         self.tensors = []
         self.num_samples = []
-        self.handled_multichannel = False
         if test:
             self.files = self.files[:10]
         for file in tqdm(self.files):
@@ -80,15 +79,13 @@ class AudioDataset(torch.utils.data.Dataset):
         return ret
     
     def one_hot_encoding(self,wave):
-        num_channel = (2**self.bits)*wave.shape[0]
+        num_channel = (2**self.bits)*(wave.shape[0])
         target = torch.zeros(num_channel, wave.shape[1],dtype=torch.float32)
         target =  target.scatter_(0, wave, 1)
         return target
     
     def multi_audio_handling(self,wave):
         # handling multi-channel audio to single channel, discarding the rest
-        if not self.handled_multichannel:
             if wave.shape[0] > 1:
                 wave = wave[:1]
-        self.handled_multichannel = True
-        return wave
+            return wave

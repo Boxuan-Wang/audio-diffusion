@@ -16,16 +16,16 @@ if __name__ == "__main__":
 
     model = WavenetUnconditional(audio_channel_num = 1, target_field=128, num_layers=5)
     print(model)
-    # trainer = pl.Trainer(max_epochs=2)
-    # trainer.fit(model, 
-    #             train_dataloaders=train_dataLoader,
-    #             val_dataloaders=val_dataloader
-    #             )
+    trainer = pl.Trainer(max_epochs=2)
+    trainer.fit(model, 
+                train_dataloaders=train_dataLoader,
+                val_dataloaders=val_dataloader
+                )
     
-    # torch.save(model.state_dict(), model_save_path)
+    torch.save(model.state_dict(), model_save_path)
     
-    # for i in range(5):
-    #     # generate 5 sample audios
-    #     model.generate_audio(file_name = "uncondWavenet" + str(i) + ".wav")
+    for i in range(5):
+        # generate 5 sample audios
+        model.generate_audio(file_name = "uncondWavenet" + str(i) + ".wav")
     
 
