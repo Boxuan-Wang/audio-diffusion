@@ -7,7 +7,7 @@ import time
 
 if __name__ == "__main__":
     model_save_path = "out/model_save/" + time.strftime("%Y%m%d%H%M%S") + "uncondWavenet.pt"
-    dataset = AudioDataset("piano/",test=True, layer_num=5, target_field=128)
+    dataset = AudioDataset("piano/",test=True, layer_num=5, target_field=128, sample_step=256)
     print(dataset[0][0].shape, dataset[0][1].shape)
     train_dataset, val_dataset = random_split(dataset, [0.9,0.1])
 

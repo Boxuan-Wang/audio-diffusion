@@ -16,6 +16,7 @@ class AudioDataset(torch.utils.data.Dataset):
                  layer_num = 10,
                  norm_sr = 16000, 
                  bits =8,
+                 sample_step = None,
                  test = False):
         """Initialise the audio dataset
 
@@ -36,6 +37,7 @@ class AudioDataset(torch.utils.data.Dataset):
         self.files = os.listdir(root_dir)
         self.tensors = []
         self.num_samples = []
+        self.sample_step = target_field if sample_step is None else sample_step
         if test:
             self.files = self.files[:10]
         for file in tqdm(self.files):
@@ -46,7 +48,7 @@ class AudioDataset(torch.utils.data.Dataset):
             norm_audio = self.softmax(norm_audio)
             norm_audio = self.resemble_to_bits(norm_audio)
             self.tensors.append(norm_audio)
-            self.num_samples.append(norm_audio.shape[1] - receptive_field*self.layer_num - target_field + 1)
+            self.num_samples.append(int(math.ceil((norm_audio.shape[1] - receptive_field*self.layer_num - target_field + 1)/self.sample_step)))
         print('Number of chunks: ', sum(self.num_samples))
         
     def __len__(self):
@@ -55,7 +57,7 @@ class AudioDataset(torch.utils.data.Dataset):
     def __getitem__(self, idx):
         cum_lengs = np.cumsum(self.num_samples)
         file_id = np.searchsorted(cum_lengs, idx, side='right')
-        local_id = idx - (cum_lengs[file_id-1] if file_id > 0 else 0)
+        local_id = (idx - (cum_lengs[file_id-1] if file_id > 0 else 0)) * self.sample_step
         norm_audio = self.tensors[file_id][:,local_id:local_id+self.receptive_field*self.layer_num+self.target_field]
         return self.one_hot_encoding(norm_audio[:,:-self.target_field]), self.one_hot_encoding(norm_audio[:,-self.target_field:])
 
