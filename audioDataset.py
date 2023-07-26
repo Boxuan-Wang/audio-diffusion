@@ -13,9 +13,10 @@ class AudioDataset(torch.utils.data.Dataset):
                  root_dir, 
                  receptive_field = 1024,
                  target_field = 1,
-                 chunk_size = 10, 
+                 layer_num = 10,
                  norm_sr = 16000, 
-                 bits =8):
+                 bits =8,
+                 test = False):
         """Initialise the audio dataset
 
         Args:
@@ -29,34 +30,34 @@ class AudioDataset(torch.utils.data.Dataset):
         self.root_dir = root_dir
         self.receptive_field = receptive_field
         self.target_field = target_field
-        self.chunk_size = chunk_size
+        self.layer_num = layer_num
         self.norm_sr = norm_sr
         self.bits = bits
         self.files = os.listdir(root_dir)
         self.tensors = []
         self.num_samples = []
+        self.handled_multichannel = False
+        if test:
+            self.files = self.files[:10]
         for file in tqdm(self.files):
             file_path = os.path.join(self.root_dir, file)
             wave, sr = torchaudio.load(file_path)
+            wave = self.multi_audio_handling(wave)
             norm_audio = self.normalize_sr(wave, sr)
             norm_audio = self.softmax(norm_audio)
             norm_audio = self.resemble_to_bits(norm_audio)
-            # one_hot = self.one_hot_encoding(norm_audio)
-            # self.tensors += one_hot
-            self.num_samples.append(norm_audio.shape[1] - receptive_field - target_field + 1)
-            # duration = wave.shape[1] / sr
-            # num_chunk = int(duration // self.chunk_size + (0 if duration%self.chunk_size==0 else 1))
-            # self.tensors+=torch.chunk(norm_audio, num_chunk, dim = 1)
+            self.tensors.append(norm_audio)
+            self.num_samples.append(norm_audio.shape[1] - receptive_field*self.layer_num - target_field + 1)
         print('Number of chunks: ', sum(self.num_samples))
-
+        
     def __len__(self):
         return sum(self.num_samples)
 
     def __getitem__(self, idx):
         cum_lengs = np.cumsum(self.num_samples)
         file_id = np.searchsorted(cum_lengs, idx, side='right')
-        local_id = idx - (cum_lengs[file_id-1] if file_id > 0 else idx)
-        norm_audio = self.tensors[file_id][:,local_id:local_id+self.receptive_field+self.target_field]
+        local_id = idx - (cum_lengs[file_id-1] if file_id > 0 else 0)
+        norm_audio = self.tensors[file_id][:,local_id:local_id+self.receptive_field*self.layer_num+self.target_field]
         return self.one_hot_encoding(norm_audio[:,:-self.target_field]), self.one_hot_encoding(norm_audio[:,-self.target_field:])
 
     def normalize_sr(self, audio, sr):
@@ -81,8 +82,13 @@ class AudioDataset(torch.utils.data.Dataset):
     def one_hot_encoding(self,wave):
         num_channel = (2**self.bits)*wave.shape[0]
         target = torch.zeros(num_channel, wave.shape[1],dtype=torch.float32)
-        for i in range(wave.shape[0]):
-            wave[i] = wave[i] + i*(2**self.bits)
         target =  target.scatter_(0, wave, 1)
         return target
     
+    def multi_audio_handling(self,wave):
+        # handling multi-channel audio to single channel, discarding the rest
+        if not self.handled_multichannel:
+            if wave.shape[0] > 1:
+                wave = wave[:1]
+        self.handled_multichannel = True
+        return wave
